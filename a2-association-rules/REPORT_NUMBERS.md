@@ -88,6 +88,25 @@ are anti-correlated with it.
 them also contain root vegetables: confidence 0.331 against a baseline of 0.109, lift 3.040.
 One item in, one item out, and an ordinary explanation — a roast.
 
+## Tools Insights -- the one number that differs
+
+| | rules | max lift |
+|---|---|---|
+| Python (mlxtend FP-Growth) | 234 | 3.295 |
+| RapidMiner (FP-Growth + Create Association Rules) | 234 | 3.295 |
+| KNIME (Association Rule Learner) | **231** | 3.295 |
+
+KNIME's Association Rule Learner produces rules with a **single item on the right-hand side**.
+Python and RapidMiner also produce rules whose consequent is a set. Exactly three rules here have
+a two-item consequent -- all three predict `other vegetables, whole milk`, from root vegetables
+(lift 2.842), whipped/sour cream (2.729) and butter (2.771) -- and 234 - 3 = 231. Everything the
+two tools do share matches: the same frequent itemsets, the same supports and confidences, and
+the same rule at the top of the lift ranking.
+
+The KNIME pipeline is three nodes: CSV Reader (delimiter `;`, no header row, so each line arrives
+as one string) -> Cell Splitter (split on `,`, output as a set) -> Association Rule Learner
+(minimum support 0.01, itemset type Free, output association rules, minimum confidence 0.20).
+
 ## Answers to the five questions
 
 - *Which rules did you find?* 234 at support 0.01 / confidence 0.20, the strongest by lift

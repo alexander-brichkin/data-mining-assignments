@@ -47,4 +47,28 @@ The process is a groupmate's, with two fixes: the absolute Windows path was made
 `first_row_as_names` was set to false -- groceries.csv has no header row, so the first basket
 was being consumed as column names.
 
-KNIME: `knime/` -- not built yet.
+KNIME: `knime/A2_AssociationRules.knwf`. Three nodes --
+CSV Reader -> Cell Splitter -> Association Rule Learner. The CSV Reader reads
+`knime://knime.workflow/data/groceries.csv`, so the dataset travels inside the archive and the
+workflow runs on any machine. Exported after a full run with all three nodes green, and
+re-imported from the archive to confirm it loads that way.
+
+## The three implementations agree
+
+| | rules | max lift | rule at max lift |
+|---|---|---|---|
+| Python (mlxtend FP-Growth) | 234 | 3.295 | citrus fruit, other vegetables -> root vegetables |
+| RapidMiner (FP-Growth) | 234 | 3.295 | same |
+| KNIME (Association Rule Learner) | **231** | 3.295 | same |
+
+The 231 is not a disagreement. KNIME's Association Rule Learner emits only **single-item
+consequents**; Python and RapidMiner also allow a consequent of two or more items. Exactly three
+rules in this run have a two-item consequent, and 234 - 3 = 231:
+
+| rule | support | confidence | lift |
+|---|---|---|---|
+| root vegetables -> other vegetables, whole milk | 0.0232 | 0.213 | 2.842 |
+| whipped/sour cream -> other vegetables, whole milk | 0.0146 | 0.204 | 2.729 |
+| butter -> other vegetables, whole milk | 0.0115 | 0.207 | 2.771 |
+
+`python/analysis.py` checks both counts, so the reconciliation is tested rather than asserted.

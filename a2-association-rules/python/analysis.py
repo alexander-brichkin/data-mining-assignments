@@ -64,11 +64,16 @@ def main():
     rules.sort_values("lift", ascending=False).to_csv(
         OUT / "rules_reference.csv", index=False, columns=cols)
 
+    single = int((rules.consequents.map(len) == 1).sum())
+    multi = len(rules) - single
+
     checks = [
         ("baskets", len(baskets), 9835),
         ("distinct items", len(counts), 169),
         ("frequent itemsets", len(itemsets), 333),
         ("rules", len(rules), 234),
+        ("single-item consequent", single, 231),
+        ("multi-item consequent", multi, 3),
     ]
     print("\ncheckpoints (actual vs expected):")
     ok = True
@@ -86,6 +91,12 @@ def main():
         flag = "ok" if abs(r.confidence - e_conf) < 0.001 and abs(r.lift - e_lift) < 0.001 else "MISMATCH"
         ok &= flag == "ok"
         print(f"  {a} -> {c}: {r.confidence:.3f} / {r.lift:.3f}  {flag}")
+
+    print("\nRapidMiner reports all 234 rules; KNIME's Association Rule Learner emits only")
+    print("single-item consequents, so it reports 231. The 3 it leaves out are:")
+    for _, r in rules[rules.consequents.map(len) > 1].iterrows():
+        print(f"  {r.antecedent} -> {r.consequent}: "
+              f"support {r.support:.4f}, confidence {r.confidence:.3f}, lift {r.lift:.3f}")
 
     print("\nwrote", OUT / "rules_reference.csv")
     raise SystemExit(0 if ok else 1)
