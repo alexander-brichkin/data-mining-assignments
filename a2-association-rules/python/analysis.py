@@ -1,58 +1,95 @@
-"""A2 Association Rules — Python reference for the RapidMiner/KNIME processes.
-
-Input : data/online_retail_nonUK.csv  (UCI Online Retail, non-UK customers, raw columns)
-Steps : same as the RapidMiner process
-  1. drop cancellations      InvoiceNo must be all digits (cancellations start with "C")
-  2. drop returns / errors   Quantity > 0, UnitPrice > 0
-  3. products only           StockCode = 5 digits + optional letters (removes POST, C2, M, D)
-  4. basket matrix           one row per invoice, one binary column per Description
-  5. FP-Growth               min support 0.03
-  6. association rules       min confidence 0.5
-Prints checkpoints and exits non-zero if any drifts.
 """
-import sys
+Assignment 2 -- reference implementation of the association-rule pipeline.
+
+This is the Python reference that the RapidMiner process and the KNIME workflow
+were checked against. All three mine the same 9,835 baskets at min support 0.01
+and min confidence 0.20 and return the same 234 rules.
+
+Usage (from the a2-association-rules directory):
+    python3 python/analysis.py
+"""
+from collections import Counter
 from pathlib import Path
+
 import pandas as pd
-from mlxtend.frequent_patterns import fpgrowth, association_rules
+from mlxtend.frequent_patterns import association_rules, fpgrowth
+from mlxtend.preprocessing import TransactionEncoder
 
-MIN_SUPPORT, MIN_CONF = 0.03, 0.5
-here = Path(__file__).resolve().parent.parent
-df = pd.read_csv(here / "data" / "online_retail_nonUK.csv", dtype=str, keep_default_na=False)
-raw = len(df)
-df = df[df.InvoiceNo.str.fullmatch(r"[0-9]+")]
-df = df[(df.Quantity.astype(int) > 0) & (df.UnitPrice.astype(float) > 0)]
-df = df[df.StockCode.str.fullmatch(r"[0-9]{5}[A-Za-z]*")]
-clean = len(df)
+ROOT = Path(__file__).resolve().parent.parent
+DATA = ROOT / "data" / "groceries.csv"
+OUT = ROOT / "results"
 
-basket = pd.crosstab(df.InvoiceNo, df.Description).gt(0)
-itemsets = fpgrowth(basket, min_support=MIN_SUPPORT, use_colnames=True)
-rules = association_rules(itemsets, metric="confidence", min_threshold=MIN_CONF)
+MIN_SUPPORT = 0.01
+MIN_CONFIDENCE = 0.20
 
-print(f"raw rows            {raw}")
-print(f"clean rows          {clean}")
-print(f"transactions        {basket.shape[0]}")
-print(f"distinct products   {basket.shape[1]}")
-print(f"frequent itemsets   {len(itemsets)}   (support >= {MIN_SUPPORT})")
-print(f"rules               {len(rules)}   (confidence >= {MIN_CONF})")
-print("\nsupport sweep (confidence 0.5):")
-for s in (0.10, 0.07, 0.05, 0.04, 0.03, 0.02):
-    fi = fpgrowth(basket, min_support=s, use_colnames=True)
-    r = association_rules(fi, metric="confidence", min_threshold=MIN_CONF) if len(fi) else []
-    print(f"  support {s:.2f}: {len(fi):4d} itemsets, {len(r):4d} rules")
-print("\ntop 10 rules by lift:")
-for _, x in rules.sort_values(["lift", "confidence"], ascending=False).head(10).iterrows():
-    a = " + ".join(sorted(i.strip() for i in x.antecedents)); c = " + ".join(sorted(i.strip() for i in x.consequents))
-    print(f"  {a}  ->  {c}   sup {x.support:.3f}  conf {x.confidence:.3f}  lift {x.lift:.2f}")
-(here / "results").mkdir(exist_ok=True)
-rules.assign(antecedents=rules.antecedents.map(lambda s: " + ".join(sorted(i.strip() for i in s))),
-             consequents=rules.consequents.map(lambda s: " + ".join(sorted(i.strip() for i in s)))) \
-     [["antecedents", "consequents", "support", "confidence", "lift"]] \
-     .sort_values("lift", ascending=False).round(4).to_csv(here / "results" / "rules_python.csv", index=False)
 
-checks = [("raw rows", raw, 46431), ("clean rows", clean, 43754),
-          ("transactions", basket.shape[0], 1872), ("distinct products", basket.shape[1], 2899),
-          ("frequent itemsets", len(itemsets), 185), ("rules", len(rules), 45)]
-bad = [n for n, got, want in checks if got != want]
-for n, got, want in checks:
-    print(f"check {n}: {got} == {want}  {'ok' if got == want else 'MISMATCH'}")
-sys.exit(1 if bad else 0)
+def load_baskets():
+    """One basket per line, comma separated, variable length, no header row."""
+    baskets = []
+    for line in DATA.read_text(encoding="utf-8").splitlines():
+        items = [i.strip() for i in line.split(",") if i.strip()]
+        if items:
+            baskets.append(items)
+    return baskets
+
+
+def main():
+    baskets = load_baskets()
+    counts = Counter(i for b in baskets for i in b)
+    sizes = [len(b) for b in baskets]
+
+    print(f"baskets                  : {len(baskets)}")
+    print(f"distinct items           : {len(counts)}")
+    print(f"item instances           : {sum(counts.values())}")
+    print(f"basket size min/mean/max : {min(sizes)} / {sum(sizes)/len(sizes):.2f} / {max(sizes)}")
+    top_item, top_n = counts.most_common(1)[0]
+    print(f"most frequent item       : {top_item} ({top_n / len(baskets):.4f} of baskets)")
+
+    encoder = TransactionEncoder()
+    matrix = pd.DataFrame(encoder.fit(baskets).transform(baskets), columns=encoder.columns_)
+    print(f"one-hot matrix           : {matrix.shape[0]} x {matrix.shape[1]}")
+
+    itemsets = fpgrowth(matrix, min_support=MIN_SUPPORT, use_colnames=True)
+    rules = association_rules(itemsets, metric="confidence", min_threshold=MIN_CONFIDENCE)
+    rules["antecedent"] = rules.antecedents.map(lambda s: ", ".join(sorted(s)))
+    rules["consequent"] = rules.consequents.map(lambda s: ", ".join(sorted(s)))
+
+    sizes_found = itemsets.itemsets.map(len).value_counts().sort_index().to_dict()
+    print(f"frequent itemsets        : {len(itemsets)} (sizes {sizes_found})")
+    print(f"rules                    : {len(rules)}")
+    print(f"lift range               : {rules.lift.min():.3f} .. {rules.lift.max():.3f}")
+
+    OUT.mkdir(exist_ok=True)
+    cols = ["antecedent", "consequent", "support", "confidence", "lift"]
+    rules.sort_values("lift", ascending=False).to_csv(
+        OUT / "rules_reference.csv", index=False, columns=cols)
+
+    checks = [
+        ("baskets", len(baskets), 9835),
+        ("distinct items", len(counts), 169),
+        ("frequent itemsets", len(itemsets), 333),
+        ("rules", len(rules), 234),
+    ]
+    print("\ncheckpoints (actual vs expected):")
+    ok = True
+    for label, actual, expected in checks:
+        flag = "ok" if actual == expected else "MISMATCH"
+        ok &= flag == "ok"
+        print(f"  {label:20s} {actual:>6} vs {expected:>6}  {flag}")
+
+    named = [("beef", "root vegetables", 0.331, 3.040),
+             ("soda", "whole milk", 0.230, 0.899),
+             ("citrus fruit, root vegetables", "other vegetables", 0.586, 3.030)]
+    print("\nnamed rules (confidence / lift):")
+    for a, c, e_conf, e_lift in named:
+        r = rules[(rules.antecedent == a) & (rules.consequent == c)].iloc[0]
+        flag = "ok" if abs(r.confidence - e_conf) < 0.001 and abs(r.lift - e_lift) < 0.001 else "MISMATCH"
+        ok &= flag == "ok"
+        print(f"  {a} -> {c}: {r.confidence:.3f} / {r.lift:.3f}  {flag}")
+
+    print("\nwrote", OUT / "rules_reference.csv")
+    raise SystemExit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,43 +1,50 @@
 # A2 — Association rules
 
-Dataset choice and cleaning rules: [`notes/DATASET.md`](notes/DATASET.md).
+## Dataset
 
-## Data
+`data/groceries.csv` — the Groceries basket dataset, one basket per line, comma separated,
+no header. **9,835 baskets, 169 distinct items, 43,367 item instances**, basket size 1 / 4.41 /
+32 (min / mean / max). Chosen by the group.
 
-UCI *Online Retail* (Chen 2015, CC BY 4.0), non-UK customers only:
-`data/online_retail_nonUK.csv`, 46,431 rows, the original eight columns, untouched. The
-only step done outside the tools is the country subset; all cleaning happens in the
-RapidMiner process (and in the same way in the Python reference).
+Alternatives that were evaluated sit in `data/alternatives/` (UCI Online Retail non-UK subset,
+The Bread Basket, a second rendering of Groceries). The Online Retail line of work is kept
+under `alternatives/` in `python/` and `rapidminer/` as well.
 
 ## Pipeline
 
-| Step | RapidMiner operator | Result |
-|---|---|---|
-| read | Read CSV | 46,431 rows |
-| drop cancellations (`InvoiceNo` starting with C), `Quantity` ≤ 0, `UnitPrice` ≤ 0, non-product codes (POST, C2, M, D) | Filter Examples "Clean" | 43,754 rows |
-| keep invoice and product | Select Attributes | 2 columns |
-| one row per invoice, one column per product | Pivot → Replace Missing (0) → Set Role (id) → Numerical to Binominal | 1,872 × 2,899 |
-| frequent itemsets, min support 0.03 | FP-Growth | 185 itemsets |
-| rules, min confidence 0.5 | Create Association Rules | 45 rules |
+```
+9,835 baskets  ->  one-hot 9,835 x 169  ->  FP-Growth, min support 0.01  ->  333 frequent itemsets
+                                        ->  min confidence 0.20          ->  234 rules
+```
 
-Postage (`POST`) is on 1,112 of the 2,406 non-UK invoices. Left in, it would be the most
-frequent "product" and would show up in rules that say nothing about what customers buy.
+Itemset sizes: 88 singletons, 213 pairs, 32 triples. Lift ranges 0.899 ... 3.295.
 
-Support sweep at confidence 0.5: 0.10 → 0 rules, 0.07 → 1, 0.05 → 11, 0.04 → 21,
-0.03 → 45, 0.02 → 188.
+## What the rules say
 
-## Reproduce
+1. **Confidence on its own is misleading here.** Whole milk is in 25.6% of all baskets, so
+   almost anything predicts it: 70 of the 234 rules have whole milk as consequent and they
+   hold the highest confidences in the set. Three of them have **lift below 1** --
+   `soda -> whole milk` has confidence 0.230 and lift **0.899**, i.e. a soda buyer is *less*
+   likely than average to buy milk. A high-confidence rule can be worse than useless.
+2. **Ranking by lift gives one coherent story.** The top of the lift ranking is a single
+   cluster -- root vegetables, other vegetables, citrus and tropical fruit, beef, onions,
+   chicken, curd. `citrus fruit, root vegetables -> other vegetables` reaches lift 3.030 at
+   confidence 0.586. These are cook-from-scratch baskets.
+3. **The cleanest single rule is `beef -> root vegetables`**: 516 baskets contain beef, 171 of
+   those also contain root vegetables -- confidence 0.331 against a 0.109 baseline, lift 3.040.
+   One item in, one item out, and a plain explanation: a roast.
+
+## Reproducing
 
 ```bash
 cd a2-association-rules
-python3 python/analysis.py     # needs pandas and mlxtend; exits non-zero on drift
+python3 python/analysis.py       # needs pandas + mlxtend; exits non-zero if the numbers drift
+python3 python/make_figures.py   # writes the two report figures into results/
 ```
 
-RapidMiner: File → Import Process → `rapidminer/A2_AssociationRules.rmp` → run.
-The CSV path is relative, so `online_retail_nonUK.csv` sits next to the `.rmp`.
-Verified in AI Studio 2026.1.1: 185 itemsets and 45 rules, same supports and confidences as
-Python.
+RapidMiner: `rapidminer/A2_AssociationRules.rmp`, with `groceries.csv` beside it.
+The process is a groupmate's, with two fixes: the absolute Windows path was made relative, and
+`first_row_as_names` was set to false -- groceries.csv has no header row, so the first basket
+was being consumed as column names.
 
-The process is a rework of the group's first version (built on the arules *Groceries*
-basket file); the operator chain from Pivot onwards is the same, the front end is new
-because the data is one row per invoice line instead of one row per basket.
+KNIME: `knime/` -- not built yet.
