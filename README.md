@@ -20,7 +20,10 @@ a1-correlations/
   rapidminer/    .rmp process, exported from AI Studio 2026.1.1 (keep sp500.csv beside it)
   results/       correlation matrices and figures
 a2-association-rules/
-  data/          Online Retail (gzipped) plus two fallback baskets datasets
+  data/          Online Retail (full gzip + non-UK subset) plus two fallback basket datasets
+  python/        analysis.py — reference pipeline with checkpoints
+  rapidminer/    .rmp process (keep online_retail_nonUK.csv beside it)
+  results/       rules from the Python reference
   notes/         dataset choice, cleaning rules and the FP-Growth pre-check
 ```
 
