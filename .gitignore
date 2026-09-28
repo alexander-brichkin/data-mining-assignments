@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+
+# LaTeX build artefacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+main-blx.bib
+
+# KNIME / RapidMiner local state
+.knimeLock
+knime_run/
+*.knwf.bak
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Lecture material is not redistributed here
+lectures/
